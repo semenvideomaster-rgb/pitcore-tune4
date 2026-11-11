@@ -1,0 +1,31 @@
+name: Build NEVE 1081 VST3
+on:
+  workflow_dispatch:
+  push:
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - name: Найти проект (работает при любой загрузке файлов)
+        run: |
+          # если загрузили сам zip - распаковать
+          for z in $(find . -maxdepth 2 -iname "*.zip" -not -path "./.git/*"); do unzip -oq "$z" -d unz_$(basename "$z" .zip); done
+          CM=$(find . -name CMakeLists.txt -not -path "./.git/*" -not -path "./build/*" | head -1)
+          if [ -z "$CM" ]; then echo "CMakeLists.txt не найден. Файлы в репозитории:"; find . -not -path "./.git/*" | head -50; exit 1; fi
+          DIR=$(dirname "$CM"); echo "Проект: $DIR"; echo "PROJ=$DIR" >> $GITHUB_ENV
+          ls -R "$DIR" | head -30
+      - name: Configure
+        run: cmake -S "$PROJ" -B build -G "Visual Studio 17 2022" -A x64
+      - name: Build
+        run: cmake --build build --config Release --target N1081_VST3 --parallel
+      - name: Показать результат
+        run: find build -name "*.vst3" | head
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NEVE1081-VST3
+          path: build/N1081_artefacts/Release/VST3/
+          if-no-files-found: error
