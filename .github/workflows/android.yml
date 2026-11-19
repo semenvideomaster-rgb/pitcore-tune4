@@ -2,6 +2,8 @@ name: Build Android APK
 on:
   workflow_dispatch:
   push:
+permissions:
+  contents: write
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -21,3 +23,14 @@ jobs:
           name: ScratchStudio-APK
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+      - name: Publish APK to apk-out branch
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk /tmp/ScratchStudio.apk
+          git config user.name "build-bot"
+          git config user.email "build-bot@users.noreply.github.com"
+          git checkout --orphan apk-out
+          git rm -rf . >/dev/null 2>&1 || true
+          cp /tmp/ScratchStudio.apk ./ScratchStudio.apk
+          git add ScratchStudio.apk
+          git commit -m "APK build"
+          git push -f origin apk-out
