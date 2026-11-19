@@ -1,0 +1,37 @@
+name: Build Pit Core Tune VST3
+on:
+  workflow_dispatch:
+  push:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -B build -G "Visual Studio 17 2022" -A x64
+      - name: Build
+        run: cmake --build build --config Release --target PitCoreTune_VST3 --parallel
+      - name: Zip VST3
+        shell: pwsh
+        run: |
+          Get-ChildItem -Recurse build -Filter *.vst3 | Select-Object FullName
+          Compress-Archive -Path "build/PitCoreTune_artefacts/Release/VST3/*" -DestinationPath PitCoreTune_VST3.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PitCoreTune-VST3
+          path: build/PitCoreTune_artefacts/Release/VST3/
+      - name: Publish to vst-out branch
+        shell: bash
+        run: |
+          cp PitCoreTune_VST3.zip /tmp/ 2>/dev/null || cp PitCoreTune_VST3.zip "$RUNNER_TEMP/"
+          Z="$RUNNER_TEMP/PitCoreTune_VST3.zip"; [ -f "$Z" ] || Z=/tmp/PitCoreTune_VST3.zip
+          git config user.name build-bot
+          git config user.email build-bot@users.noreply.github.com
+          git checkout --orphan vst-out
+          git rm -rf . >/dev/null 2>&1 || true
+          cp "$Z" ./PitCoreTune_VST3.zip
+          git add PitCoreTune_VST3.zip
+          git commit -m "VST3 build"
+          git push -f origin vst-out
