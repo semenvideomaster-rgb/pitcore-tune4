@@ -24,7 +24,17 @@ jobs:
           gradle-version: '8.5'
 
       - name: Build
-        run: gradle assembleDebug --no-daemon --stacktrace
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle assembleDebug --no-daemon 2>&1 | tee build.log
+
+      - name: Report errors
+        if: failure()
+        shell: bash
+        run: |
+          MSG=$(grep -E "^e: |error:|What went wrong|Could not|> " build.log | head -40 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+          echo "::error title=BUILD::${MSG}"
 
       - name: Rename APK
         run: cp app/build/outputs/apk/debug/app-debug.apk VirtualMixer.apk
