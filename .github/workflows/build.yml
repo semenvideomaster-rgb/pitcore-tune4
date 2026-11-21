@@ -2,7 +2,7 @@ name: Build APK
 
 on:
   push:
-    branches: [ main ]
+    branches: [ virtual-mixer ]
   workflow_dispatch:
 
 permissions:
@@ -37,8 +37,9 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: build-${{ github.run_number }}
+          tag_name: virtual-mixer-${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
           name: Virtual Mixer (сборка ${{ github.run_number }})
           body: Скачайте VirtualMixer.apk на телефон и установите.
           files: VirtualMixer.apk
-          make_latest: true
+          make_latest: false
