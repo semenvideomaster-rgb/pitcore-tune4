@@ -31,6 +31,11 @@ header{display:flex;align-items:center;gap:8px 12px;padding:8px 12px;background:
 .btn.learn.on{background:var(--org);box-shadow:0 0 14px var(--org);animation:blink 1s steps(2) infinite}
 .btn.rec.on{background:var(--hot);color:#fff;box-shadow:0 0 16px var(--hot);animation:blink 1s steps(2) infinite}
 .btn.dev{border-color:#0e4a55;color:var(--acc)}
+.btn.st0{background:var(--hot);color:#fff}.btn.st1,.btn.st2{background:var(--yel);color:#000}.btn.st3{background:var(--ok);color:#000}
+.strip.appch .krow{opacity:.28;pointer-events:none}.strip.appch .inm{visibility:hidden}
+.faders .strip .krow,.faders .strip .srow .inm{display:none}.faders .fz{min-height:220px}
+@media (max-height:560px){.strip.appch .krow{display:none}}
+.apptag{font-size:9px;font-weight:700;letter-spacing:.08em;color:var(--ok);margin-top:-2px;display:none}.strip.appch .apptag{display:block}
 @keyframes blink{50%{opacity:.6}}
 .seg{display:flex;border:1px solid #000;border-radius:7px;overflow:hidden}
 .seg button{font-weight:700;font-size:12px;letter-spacing:.08em;color:#9aa1ac;background:#1b1e24;border:0;padding:8px 9px;cursor:pointer}
@@ -138,6 +143,9 @@ select.out{width:100%;background:#05080a;color:#e5e7eb;border:1px solid #2a2e36;
 <header>
   <div class="logo">VIRTUAL<b>MIXER</b></div>
   <button class="btn dev" id="devBtn">🎚 УСТРОЙСТВА</button>
+  <button class="btn dev" id="appsBtn" style="display:none">📱 ПРИЛОЖЕНИЯ</button>
+  <button class="btn dev" id="autoBtn" style="display:none">AUTO</button>
+  <button class="btn" id="viewBtn" title="Скрыть/показать ручки">⇕ ФЕЙДЕРЫ</button>
   <div class="grp">
     <button class="btn sq" id="bpmDn">−</button>
     <div class="lcd" id="bpmLcd"><small id="bpmSrc">BPM · INT</small><span id="bpm">120.0</span></div>
@@ -205,7 +213,19 @@ select.out{width:100%;background:#05080a;color:#e5e7eb;border:1px solid #2a2e36;
     <li>Можно выбрать <b>«Весь экран»</b> со звуком системы: в канал придёт весь звук компьютера сразу (только в Chrome на Windows).</li>
   </ul>
 </div>
-  <div class="andr" style="display:none"><h4>2. На телефоне и планшете</h4><p>Источники канала: встроенный микрофон, гарнитура, USB-звуковая карта, USB-микшер или синтезатор с USB-аудио (через OTG-переходник). Записи сохраняются в папку Музыка/VirtualMixer.</p></div>
+  <div class="andr" style="display:none">
+  <h4>2. Приложения как каналы (YouTube, синтезаторы, драм-машины…)</h4>
+  <p>В списке канала есть разделы <b>«звук (выход)»</b> (приложения, которые сейчас звучат) и <b>«микрофон (вход)»</b> (приложения, которые пишут с микрофона), а ниже все приложения. Фейдер, MUTE и SOLO меняют громкость этого приложения. Кнопка <b>AUTO</b> сама раскладывает звучащие приложения по свободным каналам. Эквалайзер и эффекты на каналах приложений Android не позволяет, их ручки затемнены.</p>
+  <p><b>Один раз настройте Shizuku</b> — Android разрешает управлять громкостью других приложений только через него, root не нужен:</p>
+  <ul>
+    <li>Установите Shizuku из Google Play.</li>
+    <li>Включите режим разработчика: Настройки → Сведения о телефоне → Сведения о ПО → 7 раз нажмите «Номер сборки».</li>
+    <li>Настройки → Параметры разработчика → включите «Отладка по Wi-Fi».</li>
+    <li>В Shizuku нажмите «Сопряжение». В «Отладке по Wi-Fi» выберите «Подключить устройство с кодом сопряжения» и введите код в уведомлении Shizuku. Затем в Shizuku нажмите «Запустить».</li>
+    <li>Вернитесь в микшер и нажмите кнопку <b>📱</b> вверху → «Разрешить».</li>
+  </ul>
+  <p>Индикаторы уровня приложений: нажмите <b>📱</b> ещё раз и разрешите «запись экрана». Микшер ничего не записывает, он только измеряет громкость. Некоторые приложения запрещают захват своего звука, у них индикатор просто мигает, пока они звучат. После перезагрузки телефона в Shizuku снова нажмите «Запустить».</p>
+  <h4>3. Устройства</h4><p>Источники канала: встроенный микрофон, гарнитура, USB-звуковая карта, USB-микшер или синтезатор с USB-аудио (через OTG-переходник). Записи сохраняются в папку Музыка/VirtualMixer.</p></div>
   <h4>Канал</h4>
   <p>GAIN — входной уровень, HPF — срез низа ниже 80 Гц, HI / MID / FREQ / LOW — эквалайзер, COMP — компрессор одной ручкой, REV / DLY — посылы на ревербератор и дилей, PAN — панорама. MUTE, SOLO, фейдер в дБ. Имя канала можно переписать, нажав на него. Двойной тап по ручке или фейдеру сбрасывает значение.</p>
   <h4>MIDI</h4>
@@ -287,12 +307,13 @@ function makeCh(i){
   CH.push(c);return c;
 }
 function setComp(c,v){const t=ctx.currentTime;c.comp.threshold.setTargetAtTime(-v*40,t,.02);c.comp.ratio.setTargetAtTime(1+v*7,t,.02);setP(c.mk.gain,dbg(v*12))}
-function updateMutes(){const any=CH.some(c=>c.solo);CH.forEach(c=>setP(c.mg.gain,(!c.mute&&(!any||c.solo))?1:0))}
+function updateMutes(){const any=CH.some(c=>c.solo);CH.forEach(c=>setP(c.mg.gain,(!c.mute&&(!any||c.solo))?1:0));pushAppGains()}
 
 /* ---------------- sources ---------------- */
 let pinkBuf=null;
 function makePink(){const len=ctx.sampleRate*4;pinkBuf=ctx.createBuffer(1,len,ctx.sampleRate);const d=pinkBuf.getChannelData(0);let b0=0,b1=0,b2=0,b3=0,b4=0,b5=0,b6=0;for(let i=0;i<len;i++){const w=Math.random()*2-1;b0=.99886*b0+w*.0555179;b1=.99332*b1+w*.0750759;b2=.969*b2+w*.153852;b3=.8665*b3+w*.3104856;b4=.55*b4+w*.5329522;b5=-.7616*b5-w*.016898;d[i]=(b0+b1+b2+b3+b4+b5+b6+w*.5362)*.11;b6=w*.115926}}
 function stopSrc(c){
+  if(c.app){try{AndroidMixer.clearApp(c.app)}catch(e){}c.app=null}
   try{c.srcNode&&c.srcNode.disconnect()}catch(e){}
   try{c.split&&c.split.disconnect()}catch(e){}
   if(c.osc){try{c.osc.stop()}catch(e){}}
@@ -336,6 +357,12 @@ async function setSource(c,key){
       c.stream=st;c.srcNode=ctx.createMediaStreamSource(new MediaStream(at));
       const vt=st.getVideoTracks()[0];let nm='Вкладка';if(vt){const s=vt.getSettings&&vt.getSettings();if(s&&s.displaySurface==='monitor')nm='Весь экран';else if(s&&s.displaySurface==='window')nm='Окно'}
       if(!NAMES[c.i])setName(c,nm);
+    }else if(key.startsWith('app:')){
+      const pkg=key.slice(4);
+      CH.forEach(o=>{if(o!==c&&o.app===pkg){stopSrc(o);o.srcKey='';o.sel.value='';paintStrip(o)}});
+      c.app=pkg;if(!NAMES[c.i])setName(c,appLabel(pkg).slice(0,18));
+      pushAppGains();
+      if(APPS.state!==3)toast('Чтобы фейдер управлял приложением, подключите Shizuku: кнопка 📱 вверху',5000);
     }else if(key==='tone'){
       const o=ctx.createOscillator();o.frequency.value=1000;const g=gain(dbg(-18));o.connect(g);o.start();c.osc=o;c.srcNode=g;
     }else if(key==='pink'){
@@ -346,6 +373,39 @@ async function setSource(c,key){
     stopSrc(c);c.srcKey='';toast(e&&e.message&&!e.name?e.message:(e&&(e.name==='NoAudio'||e.name==='NotSupported')?e.message:explain(e)),6000);
   }
   if(c.sel)c.sel.value=c.srcKey;paintStrip(c);
+}
+const APPS={state:0,status:'',playing:[],recording:[],installed:[],levels:{},meters:false,sig:''};
+window.__appLevels=s=>{try{APPS.levels=JSON.parse(s)}catch(e){}};
+function appLabel(pkg){const a=[...APPS.playing,...APPS.recording,...APPS.installed].find(x=>x.pkg===pkg);return a?a.label:pkg}
+function pollApps(){
+  if(!NATIVE)return;
+  try{const d=JSON.parse(AndroidMixer.apps());APPS.state=d.state;APPS.status=d.status;APPS.playing=d.playing;APPS.recording=d.recording;APPS.meters=d.meters}catch(e){}
+  APPS.playSet=new Set(APPS.playing.map(a=>a.pkg));
+  const b=$('#appsBtn');b.className='btn dev st'+APPS.state;
+  b.textContent=['📱 SHIZUKU ВЫКЛ','📱 РАЗРЕШИТЬ SHIZUKU','📱 ПОДКЛЮЧЕНИЕ…',APPS.meters?'📱 ПРИЛОЖЕНИЯ ✓ УРОВНИ':'📱 ПРИЛОЖЕНИЯ ✓'][APPS.state]||'📱 ПРИЛОЖЕНИЯ';
+  const sig=APPS.playing.map(a=>a.pkg).join()+'|'+APPS.recording.map(a=>a.pkg).join();
+  if(sig!==APPS.sig){APPS.sig=sig;CH.forEach(c=>{if(document.activeElement!==c.sel)fillSelect(c)})}
+}
+function pushAppGains(){
+  if(!NATIVE)return;const any=CH.some(c=>c.solo);
+  CH.forEach(c=>{if(!c.app||!c.fader)return;const g=(c.mute||(any&&!c.solo))?0:Math.min(1,posGain(c.fader.get()));try{AndroidMixer.setAppGain(c.app,g)}catch(e){}});
+}
+function appsClick(){
+  if(APPS.state===0){toast('Запустите Shizuku (инструкция под кнопкой «?»)',5000);try{AndroidMixer.openShizuku()}catch(e){}return}
+  if(APPS.state===1){try{AndroidMixer.shizukuRequest()}catch(e){}return}
+  if(APPS.state===2){toast('Подключаюсь к Shizuku… '+APPS.status);return}
+  if(!APPS.meters){toast('Разрешите «запись экрана»: это нужно только для индикаторов уровня приложений',5000);try{AndroidMixer.startMeters()}catch(e){}return}
+  toast('Приложения подключены. Звучат сейчас: '+(APPS.playing.map(a=>a.label).join(', ')||'ничего'),5000);
+}
+function autoAssign(){
+  if(APPS.state!==3){appsClick();return}
+  let n=0;
+  for(const a of [...APPS.playing,...APPS.recording]){
+    if(CH.some(c=>c.app===a.pkg))continue;
+    const free=CH.find(c=>!c.srcKey);if(!free)break;
+    free.sel.value='app:'+a.pkg;setSource(free,'app:'+a.pkg);n++;
+  }
+  toast(n?'Добавлено приложений: '+n:'Новых звучащих приложений нет. Включите звук в нужном приложении и нажмите AUTO ещё раз',4500);
 }
 function shortName(l){return l.replace(/\s*\([0-9a-f]{4}:[0-9a-f]{4}\)\s*$/i,'').replace(/^(Микрофон|Microphone|Line|Линия)\s*[-–]?\s*/i,'').slice(0,18)||l.slice(0,18)}
 async function refreshDevices(){
@@ -367,6 +427,13 @@ function fillSelect(c){
   const s=c.sel;if(!s)return;const cur=c.srcKey;
   let h='<option value="">— Пусто —</option>';
   if(S.inputs.length){h+='<optgroup label="Входы компьютера">';S.inputs.forEach((d,k)=>{h+=`<option value="dev:${d.deviceId}">🎤 ${(d.label||('Вход '+(k+1))).replace(/</g,'&lt;')}</option>`});h+='</optgroup>'}
+  if(NATIVE){
+    const o=(a,ic)=>`<option value="app:${a.pkg}">${ic} ${a.label.replace(/</g,'&lt;')}</option>`;
+    const shown=new Set();
+    h+='<optgroup label="Приложения: звук (выход)">'+(APPS.playing.length?APPS.playing.map(a=>{shown.add(a.pkg);return o(a,'🔊')}).join(''):'<option disabled>— сейчас ничего не звучит —</option>')+'</optgroup>';
+    if(APPS.recording.length)h+='<optgroup label="Приложения: микрофон (вход)">'+APPS.recording.filter(a=>!shown.has(a.pkg)).map(a=>{shown.add(a.pkg);return o(a,'🎙')}).join('')+'</optgroup>';
+    if(APPS.installed.length)h+='<optgroup label="Все приложения">'+APPS.installed.filter(a=>!shown.has(a.pkg)).map(a=>o(a,'📱')).join('')+'</optgroup>';
+  }
   if(!NATIVE)h+='<optgroup label="Приложения"><option value="screen">🖥 Вкладка / окно / экран…</option></optgroup>';
   h+='<optgroup label="Тест"><option value="tone">〰 Тон 1 кГц</option><option value="pink">〰 Розовый шум</option></optgroup>';
   s.innerHTML=h;s.value=cur;if(s.value!==cur&&cur){s.add(new Option('● активный источник',cur));s.value=cur}
@@ -415,6 +482,7 @@ function buildStrip(c){
   c.nameEl=el('div','cname',s);c.nameEl.contentEditable='true';c.nameEl.spellcheck=false;c.nameEl.textContent=c.name;c.nameEl.title='Нажмите, чтобы переименовать';
   c.nameEl.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();c.nameEl.blur()}});
   c.nameEl.addEventListener('blur',()=>{const t=c.nameEl.textContent.trim().slice(0,18)||('CH '+(i+1));c.name=t;c.nameEl.textContent=t;NAMES[i]=t;store.set('names',NAMES)});
+  el('div','apptag',s,'ПРИЛОЖЕНИЕ');
   const sr=el('div','srow',s);
   c.sel=el('select','src',sr);fillSelect(c);c.sel.onchange=()=>setSource(c,c.sel.value);
   const im=el('button','mb inm',sr,'ST');im.title='Стерео / только левый / только правый вход';
@@ -444,10 +512,10 @@ function buildStrip(c){
   sb.onclick=()=>{c.solo=!c.solo;sb.classList.toggle('on',c.solo);updateMutes()};
   CTRL[p+'mute']={label:'MUTE',midi:x=>{const on=x>.5;if(on!==c.mute)mb.onclick()}};
   const dbEl=el('div','db');
-  c.fader=fader(s,{id:p+'fader',label:'FADER',def:.75,onChange:v=>{setP(c.fad.gain,posGain(v));dbEl.textContent=fmtDb(posDb(v))}});
+  c.fader=fader(s,{id:p+'fader',label:'FADER',def:.75,onChange:v=>{setP(c.fad.gain,posGain(v));dbEl.textContent=fmtDb(posDb(v));if(c.app)pushAppGains()}});
   s.appendChild(dbEl);
 }
-function paintStrip(c){if(c.el)c.el.style.opacity=c.srcKey?1:.78}
+function paintStrip(c){if(c.el){c.el.style.opacity=c.srcKey?1:.78;c.el.classList.toggle('appch',!!c.app)}}
 
 function buildUI(){
   CH.forEach(buildStrip);CH.forEach(paintStrip);
@@ -563,7 +631,7 @@ function frame(){
   const now=performance.now();
   while(S.beatQ.length&&S.beatQ[0].t<=now){const q=S.beatQ.shift();document.querySelectorAll('#beats i').forEach((e,k)=>e.className=k===q.beat?(q.beat===0?'on first':'on'):'')}
   for(const c of CH){
-    const pk=lvl(c.an,c.buf),l=dbPct(pk);c.mv=Math.max(l,c.mv-.02);
+    const pk=c.app?(APPS.meters?(APPS.levels[c.app]||0):(APPS.playSet&&APPS.playSet.has(c.app)?.05:0)):lvl(c.an,c.buf),l=dbPct(pk);c.mv=Math.max(l,c.mv-.02);
     if(l>c.hold||now-c.holdT>1200){c.hold=l;c.holdT=now}
     c.fader.meter.style.height=(100-c.mv*100)+'%';c.fader.hold.style.top=(100-c.hold*100)+'%';
     c.sigLed.classList.toggle('on',pk>.003);if(pk>.89)c.pkT=now;c.pkLed.classList.toggle('on',now-(c.pkT||0)<600);
@@ -580,6 +648,8 @@ function frame(){
 /* ---------------- header ---------------- */
 function bindHeader(){
   $('#devBtn').onclick=askDevices;
+  $('#viewBtn').onclick=()=>{const on=document.body.classList.toggle('faders');$('#viewBtn').classList.toggle('on',on);store.set('faders',on)};
+  if(store.get('faders',false)){document.body.classList.add('faders');$('#viewBtn').classList.add('on')}
   $('#bpmUp').onclick=()=>setBpm(Math.floor(S.bpm)+1);
   $('#bpmDn').onclick=()=>setBpm(Math.ceil(S.bpm)-1);
   $('#tap').onclick=()=>{const n=performance.now();S.taps=S.taps.filter(x=>n-x<2000);S.taps.push(n);if(S.taps.length>=2){const t=S.taps.slice(-5);setBpm(60000/((t[t.length-1]-t[0])/(t.length-1)))}};
@@ -614,6 +684,9 @@ $('#pwrbtn').onclick=async()=>{
   try{
     ctx=new (window.AudioContext||window.webkitAudioContext)({latencyHint:'interactive',sampleRate:48000});await ctx.resume();
     buildMaster();for(let i=0;i<10;i++)makeCh(i);
+    if(NATIVE){$('#appsBtn').style.display='';$('#autoBtn').style.display='';$('#appsBtn').onclick=appsClick;$('#autoBtn').onclick=autoAssign;
+      try{APPS.installed=JSON.parse(AndroidMixer.installedApps())}catch(e){}
+      setInterval(pollApps,1000);setTimeout(pollApps,300)}
     if(NATIVE){document.querySelectorAll('#helpm .desk').forEach(e=>e.style.display='none');document.querySelectorAll('#helpm .andr').forEach(e=>e.style.display='block')}
     buildUI();bindHeader();paintBpm();startClockWorker();refreshDevices();
     $('#power').classList.add('off');requestAnimationFrame(frame);

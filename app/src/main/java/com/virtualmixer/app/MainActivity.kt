@@ -4,6 +4,10 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.ContentValues
+import android.content.Intent
+import android.media.projection.MediaProjectionManager
+import android.os.Build
+import rikka.shizuku.Shizuku
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.media.midi.MidiDevice
@@ -39,6 +43,19 @@ class MainActivity : Activity() {
     private lateinit var web: WebView
     private var pendingPermission: PermissionRequest? = null
     private val main = Handler(Looper.getMainLooper())
+    private var installedCache: String? = null
+
+    private val permListener = Shizuku.OnRequestPermissionResultListener { _, result ->
+        if (result == PackageManager.PERMISSION_GRANTED) { AppEngine.disconnect(); main.post { ensureService() } }
+    }
+    private val binderListener = Shizuku.OnBinderReceivedListener { main.post { ensureService() } }
+    private val deadListener = Shizuku.OnBinderDeadListener { AppEngine.disconnect() }
+
+    private fun ensureService() {
+        try { startForegroundService(Intent(this, MixerService::class.java)) } catch (_: Throwable) { }
+    }
+
+    private fun js(code: String) { main.post { web.evaluateJavascript(code, null) } }
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -80,6 +97,15 @@ class MainActivity : Activity() {
         Midi.changed = {
             main.post { web.evaluateJavascript("window.__midiChanged&&window.__midiChanged()", null) }
         }
+        MeterService.sink = { json -> js("window.__appLevels&&window.__appLevels('$json')") }
+        Shizuku.addBinderReceivedListenerSticky(binderListener)
+        Shizuku.addBinderDeadListener(deadListener)
+        Shizuku.addRequestPermissionResultListener(permListener)
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 3)
+        }
+        ensureService()
         setContentView(web)
         hideBars()
         web.loadUrl("https://appassets.androidplatform.net/assets/index.html")
@@ -112,8 +138,34 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun startMeters() {
+        if (MeterService.running) return
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 2); return
+        }
+        val mpm = getSystemService(MediaProjectionManager::class.java)
+        @Suppress("DEPRECATION")
+        startActivityForResult(mpm.createScreenCaptureIntent(), 5)
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        @Suppress("DEPRECATION")
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 5 && resultCode == RESULT_OK && data != null) {
+            try {
+                startForegroundService(Intent(this, MeterService::class.java).putExtra("code", resultCode).putExtra("data", data))
+            } catch (_: Throwable) { }
+        }
+    }
+
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 2) {
+            if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) startMeters()
+            return
+        }
+        if (requestCode != 1) return
         val req = pendingPermission ?: return
         pendingPermission = null
         if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
@@ -129,6 +181,14 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        Shizuku.removeBinderReceivedListener(binderListener)
+        Shizuku.removeBinderDeadListener(deadListener)
+        Shizuku.removeRequestPermissionResultListener(permListener)
+        MeterService.sink = null
+        if (isFinishing) {
+            stopService(Intent(this, MeterService::class.java))
+            stopService(Intent(this, MixerService::class.java))
+        }
         Midi.close()
         Midi.listener = null
         Midi.changed = null
@@ -145,6 +205,71 @@ class MainActivity : Activity() {
         @JavascriptInterface fun setBpm(bpm: Double) { if (bpm in 20.0..400.0) Midi.bpm = bpm }
         @JavascriptInterface fun clockStart() = Midi.start()
         @JavascriptInterface fun clockStop() = Midi.stop()
+
+        private fun appJson(uid: Int): JSONObject? {
+            val pkg = packageManager.getPackagesForUid(uid)?.firstOrNull { it != packageName } ?: return null
+            return JSONObject().put("pkg", pkg).put("label", label(pkg))
+        }
+
+        private fun label(pkg: String): String = try {
+            packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString()
+        } catch (_: Exception) { pkg }
+
+        /** state: 0 Shizuku off, 1 needs permission, 2 connecting, 3 ready */
+        @JavascriptInterface
+        fun apps(): String {
+            val st = AppEngine.shizukuState()
+            val code = if (st == 2 && AppEngine.ready) 3 else st
+            val play = JSONArray(); AppEngine.playingUids.forEach { u -> appJson(u)?.let { play.put(it) } }
+            val rec = JSONArray(); AppEngine.recordingUids.forEach { u -> appJson(u)?.let { rec.put(it) } }
+            return JSONObject().put("state", code).put("status", AppEngine.status)
+                .put("playing", play).put("recording", rec).put("meters", MeterService.running).toString()
+        }
+
+        @JavascriptInterface
+        fun installedApps(): String {
+            installedCache?.let { return it }
+            val i = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+            @Suppress("DEPRECATION")
+            val list = packageManager.queryIntentActivities(i, 0)
+                .map { it.activityInfo.packageName }.distinct().filter { it != packageName }
+                .map { it to label(it) }.sortedBy { it.second.lowercase() }
+            val arr = JSONArray()
+            list.forEach { (p, l) -> arr.put(JSONObject().put("pkg", p).put("label", l)) }
+            return arr.toString().also { installedCache = it }
+        }
+
+        @JavascriptInterface
+        fun setAppGain(pkg: String, gain: Double) {
+            try {
+                val uid = packageManager.getApplicationInfo(pkg, 0).uid
+                AppEngine.pkgOf[uid] = pkg
+                AppEngine.gains[uid] = gain.toFloat().coerceIn(0f, 1f)
+            } catch (_: Exception) { }
+        }
+
+        @JavascriptInterface
+        fun clearApp(pkg: String) {
+            try {
+                val uid = packageManager.getApplicationInfo(pkg, 0).uid
+                AppEngine.gains.remove(uid); AppEngine.pkgOf.remove(uid)
+            } catch (_: Exception) { }
+        }
+
+        @JavascriptInterface
+        fun shizukuRequest() { main.post { try { Shizuku.requestPermission(7) } catch (_: Throwable) { } } }
+
+        @JavascriptInterface
+        fun openShizuku() {
+            main.post {
+                val i = packageManager.getLaunchIntentForPackage("moe.shizuku.privileged.api")
+                    ?: Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=moe.shizuku.privileged.api"))
+                try { startActivity(i) } catch (_: Throwable) { }
+            }
+        }
+
+        @JavascriptInterface
+        fun startMeters() { main.post { this@MainActivity.startMeters() } }
 
         @JavascriptInterface
         fun saveFile(base64: String, name: String): String = try {
